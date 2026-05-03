@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Games Night</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #16213e;
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding: 40px 20px;
+    }
+    h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: 6px; color: #e2b96a; text-transform: uppercase; }
+    .subtitle { font-size: 0.8rem; color: #667; letter-spacing: 3px; text-transform: uppercase; margin-top: -20px; }
+    .game-grid { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; }
+    a.game-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 28px 36px;
+      background: #0d1b2a;
+      border: 1px solid #1e3050;
+      border-radius: 14px;
+      text-decoration: none;
+      color: #eee;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    a.game-card:hover { transform: translateY(-4px); border-color: #e2b96a; }
+    a.game-card .icon { font-size: 3rem; }
+    a.game-card .name { font-size: 1.1rem; font-weight: 700; letter-spacing: 2px; color: #e2b96a; }
+    a.game-card .desc { font-size: 0.8rem; color: #778; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>Games Night</h1>
+  <div class="subtitle">Pick a game</div>
+  <div class="game-grid">
+    <a class="game-card" href="gomoku.html">
+      <div class="icon">⚫</div>
+      <div class="name">Gomoku</div>
+      <div class="desc">Five in a row<br>2 players or vs AI</div>
+    </a>
+  </div>
+</body>
+</html>

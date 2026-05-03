@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gomoku – Five in a Row</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #16213e;
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+      gap: 14px;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: #e2b96a;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: #667;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: -6px;
+    }
+
+    /* ── controls ── */
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 9px 22px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      transition: transform 0.12s, opacity 0.12s;
+      user-select: none;
+    }
+    button:hover  { transform: translateY(-1px); opacity: 0.92; }
+    button:active { transform: translateY(0); }
+
+    .btn-mode {
+      background: transparent;
+      color: #e2b96a;
+      border-color: #e2b96a55;
+    }
+    .btn-mode.active {
+      background: #e2b96a;
+      color: #16213e;
+      border-color: #e2b96a;
+    }
+    .btn-reset {
+      background: #c0392b;
+      color: #fff;
+      border-color: #c0392b;
+    }
+
+    /* ── status bar ── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 7px 20px;
+      background: #0d1b2a;
+      border-radius: 20px;
+      border: 1px solid #1e3050;
+      min-height: 38px;
+      min-width: 200px;
+      justify-content: center;
+    }
+
+    .dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.b { background: radial-gradient(circle at 38% 35%, #777, #111); box-shadow: 1px 2px 4px #0007; }
+    .dot.w { background: radial-gradient(circle at 38% 35%, #fff, #bbb); box-shadow: 1px 2px 4px #0005; border: 1px solid #aaa; }
+
+    /* ── score bar ── */
+    .score-bar {
+      display: flex;
+      gap: 32px;
+    }
+    .score-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+      color: #99a;
+    }
+    .score-item strong { color: #e2b96a; font-size: 1.15rem; min-width: 18px; text-align: center; }
+
+    /* ── canvas ── */
+    canvas {
+      display: block;
+      cursor: crosshair;
+      border-radius: 6px;
+      box-shadow: 0 14px 48px #000a;
+      max-width: min(100vw - 32px, 620px);
+      max-height: min(100vw - 32px, 620px);
+      touch-action: none;
+    }
+    canvas.no-pointer { cursor: not-allowed; pointer-events: none; }
+
+    /* ── last-move marker color changes based on player ── */
+    @media (max-width: 500px) {
+      h1 { font-size: 1.6rem; letter-spacing: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Gomoku</h1>
+<div class="subtitle">Five in a row</div>
+
+<div class="controls">
+  <button class="btn-mode active" id="btn-pvp" onclick="setMode('pvp')">👥 Two Players</button>
+  <button class="btn-mode"        id="btn-pvc" onclick="setMode('pvc')">🤖 vs Computer</button>
+  <button class="btn-reset"                    onclick="resetGame()">↺ New Game</button>
+</div>
+
+<div class="status-bar">
+  <div class="dot b" id="status-dot"></div>
+  <span id="status-text">Black's turn</span>
+</div>
+
+<div class="score-bar">
+  <div class="score-item"><div class="dot b"></div> Black: <strong id="sc-b">0</strong></div>
+  <div class="score-item"><div class="dot w"></div> White: <strong id="sc-w">0</strong></div>
+</div>
+
+<canvas id="board"></canvas>
+
+<script>
+// ─────────────────────────────────────────────
+//  Constants
+// ─────────────────────────────────────────────
+const N    = 15;          // board intersections
+const CELL = 40;          // px between intersections
+const PAD  = 32;          // border padding
+const CS   = (N-1)*CELL + PAD*2;   // canvas side length
+const SR   = CELL/2 - 3;           // stone radius
+
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let board, turn, over, winCells, lastMove;
+let hR = null, hC = null;
+let aiThinking = false;
+let mode = 'pvp';
+let scores = {1:0, 2:0};
+
+// ─────────────────────────────────────────────
+//  Canvas
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('board');
+canvas.width  = CS;
+canvas.height = CS;
+const ctx = canvas.getContext('2d');
+
+// Pre-render static board background once
+const bgCvs = document.createElement('canvas');
+bgCvs.width = bgCvs.height = CS;
+const bg = bgCvs.getContext('2d');
+(function buildBg() {
+  // warm wood gradient
+  const g = bg.createLinearGradient(0, 0, CS, CS);
+  g.addColorStop(0,   '#dba55b');
+  g.addColorStop(0.5, '#c88c3c');
+  g.addColorStop(1,   '#b87830');
+  bg.fillStyle = g;
+  bg.fillRect(0, 0, CS, CS);
+
+  // subtle texture lines
+  bg.globalAlpha = 0.06;
+  for (let i = 0; i < 20; i++) {
+    const y = (i / 20) * CS + (Math.random() * 8 - 4);
+    bg.strokeStyle = '#000';
+    bg.lineWidth = 1 + Math.random();
+    bg.beginPath(); bg.moveTo(0, y); bg.lineTo(CS, y + Math.random()*6 - 3); bg.stroke();
+  }
+  bg.globalAlpha = 1;
+
+  // outer border
+  bg.strokeStyle = '#7a4e18';
+  bg.lineWidth = 3;
+  bg.strokeRect(PAD, PAD, (N-1)*CELL, (N-1)*CELL);
+
+  // grid lines
+  bg.strokeStyle = '#7a4e18';
+  bg.lineWidth = 0.8;
+  for (let i = 0; i < N; i++) {
+    const x = PAD + i*CELL, y = PAD + i*CELL;
+    bg.beginPath(); bg.moveTo(x, PAD); bg.lineTo(x, PAD+(N-1)*CELL); bg.stroke();
+    bg.beginPath(); bg.moveTo(PAD, y); bg.lineTo(PAD+(N-1)*CELL, y); bg.stroke();
+  }
+
+  // star points (hoshi)
+  bg.fillStyle = '#7a4e18';
+  for (const r of [3,7,11]) {
+    for (const c of [3,7,11]) {
+      bg.beginPath();
+      bg.arc(PAD+c*CELL, PAD+r*CELL, 4.5, 0, Math.PI*2);
+      bg.fill();
+    }
+  }
+})();
+
+// ─────────────────────────────────────────────
+//  Drawing
+// ─────────────────────────────────────────────
+function draw() {
+  ctx.drawImage(bgCvs, 0, 0);
+
+  // placed stones
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (board[r][c]) drawStone(r, c, board[r][c], 1.0);
+
+  // last-move indicator
+  if (lastMove) {
+    const [lr, lc, lp] = lastMove;
+    ctx.save();
+    ctx.strokeStyle = lp === 1 ? 'rgba(255,80,80,0.85)' : 'rgba(80,140,255,0.85)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    const sz = 7;
+    const lx = PAD+lc*CELL, ly = PAD+lr*CELL;
+    ctx.moveTo(lx-sz, ly); ctx.lineTo(lx+sz, ly);
+    ctx.moveTo(lx, ly-sz); ctx.lineTo(lx, ly+sz);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // win line
+  if (winCells) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,50,50,0.9)';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(PAD+winCells[0][1]*CELL, PAD+winCells[0][0]*CELL);
+    ctx.lineTo(PAD+winCells[4][1]*CELL, PAD+winCells[4][0]*CELL);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // hover ghost stone
+  if (!over && hR !== null && board[hR][hC] === 0 && !aiThinking)
+    drawStone(hR, hC, turn, 0.38);
+}
+
+function drawStone(row, col, player, alpha) {
+  const x = PAD + col*CELL;
+  const y = PAD + row*CELL;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  ctx.shadowColor  = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur   = 8;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 3;
+
+  ctx.beginPath();
+  ctx.arc(x, y, SR, 0, Math.PI*2);
+
+  if (player === 1) {
+    const g = ctx.createRadialGradient(x-6, y-7, 2, x, y, SR);
+    g.addColorStop(0, '#707070');
+    g.addColorStop(0.35, '#282828');
+    g.addColorStop(1,   '#050505');
+    ctx.fillStyle = g;
+  } else {
+    const g = ctx.createRadialGradient(x-6, y-7, 2, x, y, SR);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.5, '#ebebeb');
+    g.addColorStop(1,   '#b5b5b5');
+    ctx.fillStyle = g;
+  }
+  ctx.fill();
+
+  // specular highlight
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(x-SR*0.28, y-SR*0.3, SR*0.28, 0, Math.PI*2);
+  ctx.fillStyle = player===1 ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.55)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Win detection
+// ─────────────────────────────────────────────
+function checkWin(r, c, p) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (const [dr,dc] of dirs) {
+    const cells = [[r,c]];
+    for (let s=1;s<=4;s++) {
+      const nr=r+dr*s, nc=c+dc*s;
+      if (nr<0||nr>=N||nc<0||nc>=N||board[nr][nc]!==p) break;
+      cells.push([nr,nc]);
+    }
+    for (let s=1;s<=4;s++) {
+      const nr=r-dr*s, nc=c-dc*s;
+      if (nr<0||nr>=N||nc<0||nc>=N||board[nr][nc]!==p) break;
+      cells.push([nr,nc]);
+    }
+    if (cells.length >= 5) {
+      cells.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+      return cells.slice(0,5);
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+//  Place stone
+// ─────────────────────────────────────────────
+function place(r, c) {
+  if (over || board[r][c] !== 0) return false;
+  board[r][c] = turn;
+  lastMove = [r, c, turn];
+
+  const win = checkWin(r, c, turn);
+  if (win) {
+    winCells = win;
+    over = true;
+    scores[turn]++;
+    draw();
+    setStatus(`${turn===1?'Black':'White'} wins! 🎉`, turn);
+    document.getElementById(turn===1 ? 'sc-b' : 'sc-w').textContent = scores[turn];
+    return true;
+  }
+
+  turn = turn===1 ? 2 : 1;
+  setStatus(`${turn===1?'Black':'White'}'s turn`, turn);
+  draw();
+  return true;
+}
+
+// ─────────────────────────────────────────────
+//  AI (heuristic threat evaluation)
+// ─────────────────────────────────────────────
+function scorePattern(count, openEnds) {
+  if (count >= 5) return 2000000;
+  if (count === 4) { if (openEnds===2) return 200000; if (openEnds===1) return 20000; return 0; }
+  if (count === 3) { if (openEnds===2) return 10000;  if (openEnds===1) return 500;   return 0; }
+  if (count === 2) { if (openEnds===2) return 600;    if (openEnds===1) return 60;    return 0; }
+  return openEnds > 0 ? 5 : 0;
+}
+
+function evalCell(r, c, p) {
+  let total = 0;
+  for (const [dr,dc] of [[0,1],[1,0],[1,1],[1,-1]]) {
+    let count = 1, open = 0;
+    for (let s=1;s<=4;s++) {
+      const nr=r+dr*s, nc=c+dc*s;
+      if (nr<0||nr>=N||nc<0||nc>=N) break;
+      if (board[nr][nc]===p) count++;
+      else { if(board[nr][nc]===0) open++; break; }
+    }
+    for (let s=1;s<=4;s++) {
+      const nr=r-dr*s, nc=c-dc*s;
+      if (nr<0||nr>=N||nc<0||nc>=N) break;
+      if (board[nr][nc]===p) count++;
+      else { if(board[nr][nc]===0) open++; break; }
+    }
+    total += scorePattern(count, open);
+  }
+  return total;
+}
+
+function getCandidates() {
+  const seen = new Set(), result = [];
+  for (let r=0;r<N;r++) for (let c=0;c<N;c++) {
+    if (board[r][c] !== 0) {
+      for (let dr=-2;dr<=2;dr++) for (let dc=-2;dc<=2;dc++) {
+        const nr=r+dr, nc=c+dc;
+        if (nr>=0&&nr<N&&nc>=0&&nc<N&&board[nr][nc]===0) {
+          const key=nr*N+nc;
+          if (!seen.has(key)) { seen.add(key); result.push([nr,nc]); }
+        }
+      }
+    }
+  }
+  return result.length ? result : [[Math.floor(N/2), Math.floor(N/2)]];
+}
+
+function aiGetMove() {
+  const AI=2, HU=1;
+  let best=-Infinity, br=Math.floor(N/2), bc=Math.floor(N/2);
+  for (const [r,c] of getCandidates()) {
+    const atk = evalCell(r, c, AI);
+    const def = evalCell(r, c, HU);
+    // Immediately win > block immediate win > balanced heuristic
+    const score = atk >= 2000000 ? atk*2
+                : def >= 2000000 ? def*1.9
+                : atk*1.05 + def;
+    if (score > best) { best=score; br=r; bc=c; }
+  }
+  return [br, bc];
+}
+
+// ─────────────────────────────────────────────
+//  UI helpers
+// ─────────────────────────────────────────────
+function setStatus(text, player) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('status-dot').className = `dot ${player===1?'b':'w'}`;
+}
+
+function resetGame() {
+  board = Array.from({length:N}, ()=>new Array(N).fill(0));
+  turn = 1; over = false; winCells = null; lastMove = null;
+  hR = hC = null; aiThinking = false;
+  canvas.classList.remove('no-pointer');
+  setStatus("Black's turn", 1);
+  draw();
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-pvp').classList.toggle('active', m==='pvp');
+  document.getElementById('btn-pvc').classList.toggle('active', m==='pvc');
+  scores = {1:0, 2:0};
+  document.getElementById('sc-b').textContent = '0';
+  document.getElementById('sc-w').textContent = '0';
+  resetGame();
+}
+
+// ─────────────────────────────────────────────
+//  Input helpers
+// ─────────────────────────────────────────────
+function pointerToCell(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = CS / rect.width, sy = CS / rect.height;
+  const src = e.touches ? e.touches[0] : e;
+  const x = (src.clientX - rect.left) * sx;
+  const y = (src.clientY - rect.top)  * sy;
+  const c = Math.round((x-PAD)/CELL);
+  const r = Math.round((y-PAD)/CELL);
+  if (c<0||c>=N||r<0||r>=N) return null;
+  return [r,c];
+}
+
+function handleClick(e) {
+  if (over || aiThinking) return;
+  if (mode==='pvc' && turn===2) return;
+  const cell = pointerToCell(e);
+  if (!cell) return;
+  const [r,c] = cell;
+  if (!place(r, c)) return;
+
+  if (mode==='pvc' && !over) {
+    aiThinking = true;
+    canvas.classList.add('no-pointer');
+    setStatus('Computer thinking…', 2);
+    setTimeout(()=>{
+      const [ar,ac] = aiGetMove();
+      place(ar, ac);
+      aiThinking = false;
+      if (!over) canvas.classList.remove('no-pointer');
+    }, 160);
+  }
+}
+
+canvas.addEventListener('mousemove', e => {
+  if (over || aiThinking) return;
+  const cell = pointerToCell(e);
+  const [nr, nc] = cell || [null, null];
+  if (nr!==hR || nc!==hC) { hR=nr; hC=nc; draw(); }
+});
+
+canvas.addEventListener('mouseleave', () => { hR=hC=null; draw(); });
+
+canvas.addEventListener('click', handleClick);
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  handleClick(e);
+}, { passive:false });
+
+// ─────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────
+resetGame();
+</script>
+</body>
+</html>
