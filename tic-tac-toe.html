@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic-Tac-Toe – Games Night</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #16213e;
+      color: #eee;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 24px 16px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      max-width: 360px;
+      gap: 14px;
+    }
+    .back { color: #e2b96a; text-decoration: none; font-size: 1.05rem; font-weight: 600; }
+    h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: 5px; color: #e2b96a; text-transform: uppercase; }
+
+    /* Mode selector */
+    .mode-row {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .mode-btn {
+      flex: 1;
+      padding: 9px;
+      background: #0d1b2a;
+      border: 1px solid #1e3050;
+      border-radius: 8px;
+      color: #aaa;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .mode-btn.active { border-color: #e2b96a; color: #e2b96a; }
+
+    /* Score bar */
+    .score-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      max-width: 360px;
+    }
+    .score-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 80px;
+    }
+    .score-box .label {
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #667;
+    }
+    .score-box .val {
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+    .score-box.x-side .val { color: #7ec8e3; }
+    .score-box.o-side .val { color: #f4a261; }
+    .score-box.draws  .val { color: #778; }
+
+    .turn-indicator {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: #0d1b2a;
+      border: 1px solid #1e3050;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .turn-x { color: #7ec8e3; border-color: #7ec8e3; }
+    .turn-o { color: #f4a261; border-color: #f4a261; }
+    .turn-done { color: #e2b96a; border-color: #e2b96a; }
+
+    /* Canvas */
+    canvas {
+      width: min(360px, 100vw - 32px);
+      aspect-ratio: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: block;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 11px;
+      background: #0d1b2a;
+      border: 1px solid #1e3050;
+      border-radius: 10px;
+      color: #ccc;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .action-btn:hover { border-color: #e2b96a; color: #e2b96a; }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="index.html">← Back</a>
+  <h1>Tic-Tac-Toe</h1>
+</header>
+
+<div class="mode-row">
+  <button class="mode-btn active" id="pvp-btn">👥 2 Players</button>
+  <button class="mode-btn" id="ai-btn">🤖 vs AI</button>
+</div>
+
+<div class="score-bar">
+  <div class="score-box x-side">
+    <span class="label" id="x-label">X</span>
+    <span class="val" id="score-x">0</span>
+  </div>
+  <span class="turn-indicator turn-x" id="turn-ind">X's turn</span>
+  <div class="score-box draws">
+    <span class="label">Draw</span>
+    <span class="val" id="score-d">0</span>
+  </div>
+  <div class="score-box o-side">
+    <span class="label" id="o-label">O</span>
+    <span class="val" id="score-o">0</span>
+  </div>
+</div>
+
+<canvas id="c" width="360" height="360"></canvas>
+
+<div class="btn-row">
+  <button class="action-btn" id="new-btn">↺ New Game</button>
+  <button class="action-btn" id="reset-btn">⊘ Reset Scores</button>
+</div>
+
+<script>
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const C       = 360;         // canvas logical size
+const CELL    = C / 3;
+
+// ── State ─────────────────────────────────────────────────────────
+let board = Array(9).fill(0);  // 0=empty, 1=X, -1=O
+let turn  = 1;                 // 1=X, -1=O
+let phase = 'playing';         // 'playing' | 'won' | 'draw'
+let winLine = null;            // [a,b,c] indices
+let vsAI  = false;
+let scores = { x: 0, o: 0, d: 0 };
+let animT = 0, animRAF = null;
+
+const LINES = [
+  [0,1,2],[3,4,5],[6,7,8],  // rows
+  [0,3,6],[1,4,7],[2,5,8],  // cols
+  [0,4,8],[2,4,6]           // diags
+];
+
+// ── AI (minimax with alpha-beta) ──────────────────────────────────
+function checkWinner(b) {
+  for (const [a,c,d] of LINES) {
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a];
+  }
+  return b.includes(0) ? 0 : 2; // 2 = draw
+}
+
+function minimax(b, depth, alpha, beta, isMax) {
+  const w = checkWinner(b);
+  if (w === 1)  return 10 - depth;
+  if (w === -1) return depth - 10;
+  if (w === 2)  return 0;
+
+  if (isMax) {
+    let best = -Infinity;
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = 1;
+      best = Math.max(best, minimax(b, depth+1, alpha, beta, false));
+      b[i] = 0;
+      alpha = Math.max(alpha, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = -1;
+      best = Math.min(best, minimax(b, depth+1, alpha, beta, true));
+      b[i] = 0;
+      beta = Math.min(beta, best);
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+}
+
+function bestMove() {
+  // O is the AI (-1), minimising
+  let best = Infinity, move = -1;
+  for (let i = 0; i < 9; i++) {
+    if (board[i]) continue;
+    board[i] = -1;
+    const score = minimax(board, 0, -Infinity, Infinity, true);
+    board[i] = 0;
+    if (score < best) { best = score; move = i; }
+  }
+  return move;
+}
+
+// ── Drawing ───────────────────────────────────────────────────────
+function cellCenter(i) {
+  const col = i % 3, row = (i / 3) | 0;
+  return [col * CELL + CELL / 2, row * CELL + CELL / 2];
+}
+
+function drawBoard(t) {
+  ctx.clearRect(0, 0, C, C);
+
+  // Background
+  ctx.fillStyle = '#0d1b2a';
+  ctx.fillRect(0, 0, C, C);
+
+  // Grid lines
+  ctx.strokeStyle = '#1e3a5a';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  for (let i = 1; i < 3; i++) {
+    ctx.beginPath(); ctx.moveTo(i * CELL, 16); ctx.lineTo(i * CELL, C - 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(16, i * CELL); ctx.lineTo(C - 16, i * CELL); ctx.stroke();
+  }
+
+  // Pieces
+  for (let i = 0; i < 9; i++) {
+    if (!board[i]) continue;
+    const [cx, cy] = cellCenter(i);
+    const r = CELL * 0.28;
+
+    if (board[i] === 1) {
+      // X
+      ctx.strokeStyle = '#7ec8e3';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + r, cy - r); ctx.lineTo(cx - r, cy + r); ctx.stroke();
+    } else {
+      // O
+      ctx.strokeStyle = '#f4a261';
+      ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  // Win line animation
+  if (winLine && phase === 'won') {
+    const [a, , c] = winLine;
+    const [x1, y1] = cellCenter(a);
+    const [x2, y2] = cellCenter(c);
+    const frac = Math.min(1, t / 18);
+
+    ctx.strokeStyle = '#e2b96a';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + (x2 - x1) * frac, y1 + (y2 - y1) * frac);
+    ctx.stroke();
+  }
+}
+
+function animate() {
+  animT++;
+  drawBoard(animT);
+  if (animT < 20) animRAF = requestAnimationFrame(animate);
+  else animRAF = null;
+}
+
+function startAnim() {
+  cancelAnimationFrame(animRAF);
+  animT = 0;
+  animate();
+}
+
+// ── UI Updates ────────────────────────────────────────────────────
+const turnEl   = document.getElementById('turn-ind');
+const scoreXEl = document.getElementById('score-x');
+const scoreOEl = document.getElementById('score-o');
+const scoreDEl = document.getElementById('score-d');
+const xLabel   = document.getElementById('x-label');
+const oLabel   = document.getElementById('o-label');
+
+function updateLabels() {
+  xLabel.textContent = vsAI ? 'You'  : 'X';
+  oLabel.textContent = vsAI ? 'AI'   : 'O';
+}
+
+function updateTurn() {
+  if (phase === 'won') {
+    const who = winLine ? (board[winLine[0]] === 1 ? (vsAI ? 'You win!' : 'X wins!') : (vsAI ? 'AI wins!' : 'O wins!')) : '';
+    turnEl.textContent = who;
+    turnEl.className = 'turn-indicator turn-done';
+  } else if (phase === 'draw') {
+    turnEl.textContent = 'Draw!';
+    turnEl.className = 'turn-indicator turn-done';
+  } else {
+    const xTurn = turn === 1;
+    turnEl.textContent = xTurn ? (vsAI ? 'Your turn' : "X's turn") : (vsAI ? 'AI thinking…' : "O's turn");
+    turnEl.className = 'turn-indicator ' + (xTurn ? 'turn-x' : 'turn-o');
+  }
+  scoreXEl.textContent = scores.x;
+  scoreOEl.textContent = scores.o;
+  scoreDEl.textContent = scores.d;
+}
+
+// ── Game Logic ────────────────────────────────────────────────────
+function checkEnd() {
+  for (const line of LINES) {
+    const [a, b, c] = line;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      phase = 'won';
+      winLine = line;
+      if (board[a] === 1) scores.x++; else scores.o++;
+      updateTurn();
+      startAnim();
+      return true;
+    }
+  }
+  if (!board.includes(0)) {
+    phase = 'draw';
+    scores.d++;
+    updateTurn();
+    drawBoard(0);
+    return true;
+  }
+  return false;
+}
+
+function place(i) {
+  if (board[i] || phase !== 'playing') return false;
+  board[i] = turn;
+  turn = -turn;
+  drawBoard(0);
+  return true;
+}
+
+function doAIMove() {
+  if (phase !== 'playing' || turn !== -1) return;
+  updateTurn(); // show "AI thinking…"
+  setTimeout(() => {
+    const move = bestMove();
+    if (move < 0) return;
+    place(move);
+    checkEnd();
+    if (phase === 'playing') updateTurn();
+  }, 250);
+}
+
+function humanClick(i) {
+  if (phase !== 'playing') return;
+  if (vsAI && turn !== 1) return; // not human's turn
+  if (!place(i)) return;
+  if (checkEnd()) return;
+  updateTurn();
+  if (vsAI) doAIMove();
+}
+
+function newGame() {
+  board = Array(9).fill(0);
+  turn  = 1;
+  phase = 'playing';
+  winLine = null;
+  cancelAnimationFrame(animRAF);
+  drawBoard(0);
+  updateTurn();
+  // If AI plays first (shouldn't happen since X=human always)
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (phase !== 'playing') { newGame(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const scale = C / rect.width;
+  const x = (e.clientX - rect.left) * scale;
+  const y = (e.clientY - rect.top)  * scale;
+  const col = Math.floor(x / CELL);
+  const row = Math.floor(y / CELL);
+  if (col < 0 || col > 2 || row < 0 || row > 2) return;
+  humanClick(row * 3 + col);
+});
+
+// ── Mode buttons ──────────────────────────────────────────────────
+document.getElementById('pvp-btn').addEventListener('click', () => {
+  vsAI = false;
+  document.getElementById('pvp-btn').classList.add('active');
+  document.getElementById('ai-btn').classList.remove('active');
+  scores = { x: 0, o: 0, d: 0 };
+  updateLabels();
+  newGame();
+});
+
+document.getElementById('ai-btn').addEventListener('click', () => {
+  vsAI = true;
+  document.getElementById('ai-btn').classList.add('active');
+  document.getElementById('pvp-btn').classList.remove('active');
+  scores = { x: 0, o: 0, d: 0 };
+  updateLabels();
+  newGame();
+});
+
+document.getElementById('new-btn').addEventListener('click', newGame);
+document.getElementById('reset-btn').addEventListener('click', () => {
+  scores = { x: 0, o: 0, d: 0 };
+  newGame();
+});
+
+// ── Init ──────────────────────────────────────────────────────────
+updateLabels();
+newGame();
+</script>
+</body>
+</html>
